@@ -17,7 +17,7 @@ class GifManipulator extends DataLogger
     const NOISE_MULTIPLICATIVEGAUSSIAN = 3;
     const NOISE_POISSON = 6;
 
-    protected $API_KEY = 'hLPlS4zf4wOLzzNGTMCh2edZyvI9VLnw';
+    protected $API_KEY = '';
 
     protected $KEYFRAME_ONETHIRD;
     protected $KEYFRAME_TWOTHIRDS;
@@ -29,6 +29,14 @@ class GifManipulator extends DataLogger
     protected $H;
     protected $X;
     protected $Y;
+
+    /**
+     * @param string $API_KEY
+     */
+    public function setAPIKEY($API_KEY)
+    {
+        $this->API_KEY = $API_KEY;
+    }
 
     public function setRelevantFrames($frames) {
         $this->KEYFRAME_ONETHIRD = $frames[0];

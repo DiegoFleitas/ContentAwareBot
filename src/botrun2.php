@@ -14,6 +14,7 @@ $GM = new \ContentAwareBot\GifManipulator();
 $new_path = __DIR__."/resources/gifs/modified.gif";
 $path = __DIR__."/resources/gifs/original.gif";
 
+$res = $GM->setAPIKEY($_GIPHY_API_KEY);
 $res = $GM->giphyGet($path);
 
 $GM->liquidRescale($path, $new_path);
