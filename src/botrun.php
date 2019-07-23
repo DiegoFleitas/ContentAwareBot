@@ -9,26 +9,39 @@
 require __DIR__ . '/../vendor/autoload.php';
 require_once 'resources/secrets.php';
 
-$GM = new \ContentAwareBot\GifManipulator();
+$dt = new ContentAwareBot\DataLogger();
+$dt->logdata('[DAILY]');
 
-$new_path = "C:\Users\Diego\PhpstormProjects\ContentAwareBot\src\\resources\gifs\modified.gif";
-$path = "C:\Users\Diego\PhpstormProjects\ContentAwareBot\src\\resources\gifs\original.gif";
+$GM = new ContentAwareBot\GifManipulator();
 
-//$res = $GM->giphyGet($path);
-$res['url'] = 'https://media.giphy.com/media/eNKObbwDIJOy4/giphy.gif';
+$new_path = __DIR__."/resources/gifs/modified.gif";
+$path = __DIR__."/resources/gifs/original.gif";
+
+$res = $GM->setAPIKEY($_GIPHY_API_KEY);
+$res = $GM->giphyGet($path);
 
 $GM->liquidRescale($path, $new_path);
 
-$FB = new \ContentAwareBot\FacebookHelper();
-$fb = $FB->init($_APP_ID, $_APP_SECRET, $_ACCESS_TOKEN_DEBUG);
+$gif_id = $GM->giphyUpload($new_path);
 
-if (isset($res['user']) && isset($res['url'])){
-    $desc = "Original by {$res['user']}:\n{$res['url']}";
-} else {
-    if (isset($res['url'])) {
-        $desc = "{$res['url']}";
+if (!empty($gif_id)) {
+
+    $FB = new ContentAwareBot\FacebookHelper();
+    $fb = $FB->init($_APP_ID, $_APP_SECRET, $_ACCESS_TOKEN_DEBUG);
+
+    if (isset($res['user']) && isset($res['url'])){
+        $desc = "Original by {$res['user']}:\n{$res['url']}";
+    } else {
+        if (isset($res['url'])) {
+            $desc = "{$res['url']}";
+        }
     }
+
+    $first_frame = __DIR__.'/resources/frames/modified/frame0.jpg';
+    $title = 'This is a test to circumvent Zuckerberg';
+    $generated_gif = 'https://media.giphy.com/media/'.$gif_id.'/giphy.gif';
+    $FB->newPost($fb, $first_frame, $title, $generated_gif, $res['url']);
+} else {
+    $this->logdata('Giphy id was empty');
 }
 
-$title = md5(time ().mt_rand(0, 100)); // just a hash
-$FB->postVideo($fb, $new_path, $title, $desc);
