@@ -1,14 +1,33 @@
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="api_key"
+<?php
+/**
+ * Created by PhpStorm.
+ * User: Diego
+ * Date: 2/25/2019
+ * Time: 5:08 AM
+ */
 
-hLPlS4zf4wOLzzNGTMCh2edZyvI9VLnw
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="file"; filename="C:\Users\Diego\PhpstormProjects\ContentAwareBot\src\resources\gifs\modified.gif"
-Content-Type: image/gif
+require __DIR__ . '/../vendor/autoload.php';
+require_once 'resources/secrets.php';
 
+$path = 'C:\Users\Diego\PhpstormProjects\ContentAwareBot\src\resources\frames\original\frame42.jpg';
+$path2 = 'C:\Users\Diego\PhpstormProjects\ContentAwareBot\src\resources\zoom\test.jpg';
 
-------WebKitFormBoundary7MA4YWxkTrZu0gW
-Content-Disposition: form-data; name="tags"
+/* Create new object */
+$im = new Imagick($path);
+$w1 = $im->getImageHeight();
+$h1 = $im->getImageWidth();
 
-contentaware, brokengif
-------WebKitFormBoundary7MA4YWxkTrZu0gW--
+$GM = new \ContentAwareBot\GifManipulator();
+$GM->ZoomToFaceOnce($im);
+
+//$im->cropImage(461, 248, 0, 0);
+//$im->scaleImage($h1, $w1);
+
+//$liquidw = round($im->getImageWidth()*0.5);
+//$liquidh = round($im->getImageHeight()*0.5);
+//
+//$im->liquidRescaleImage($liquidw, $liquidh, 15, 1);
+
+/* Display */
+header('Content-Type: image/jpg');
+file_put_contents($path2, $im);
