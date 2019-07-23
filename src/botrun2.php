@@ -9,7 +9,10 @@
 require __DIR__ . '/../vendor/autoload.php';
 require_once 'resources/secrets.php';
 
-$GM = new \ContentAwareBot\GifManipulator();
+$dt = new ContentAwareBot\DataLogger();
+$dt->logdata('[DAILY]');
+
+$GM = new ContentAwareBot\GifManipulator();
 
 $new_path = __DIR__."/resources/gifs/modified.gif";
 $path = __DIR__."/resources/gifs/original.gif";
@@ -23,7 +26,7 @@ $gif_id = $GM->giphyUpload($new_path);
 
 if (!empty($gif_id)) {
 
-    $FB = new \ContentAwareBot\FacebookHelper();
+    $FB = new ContentAwareBot\FacebookHelper();
     $fb = $FB->init($_APP_ID, $_APP_SECRET, $_ACCESS_TOKEN_DEBUG);
 
     if (isset($res['user']) && isset($res['url'])){

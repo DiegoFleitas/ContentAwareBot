@@ -58,8 +58,8 @@ class GifManipulator extends DataLogger
 
         $this->logdata('liquidRescale.. ');
 
-        $this->deleteFrames(__DIR__.'/../src/resources/frames/modified/');
-        $this->deleteFrames(__DIR__.'/../src/resources/frames/original/');
+        $this->deleteFrames(__DIR__.'/../resources/frames/modified/');
+        $this->deleteFrames(__DIR__.'/../resources/frames/original/');
 
         $dt = new \ContentAwareBot\DataLogger();
 
@@ -75,7 +75,7 @@ class GifManipulator extends DataLogger
 
             $retouchedFrames = array();
 
-            $base_folder = __DIR__.'/../src/resources/frames/';
+            $base_folder = __DIR__.'/../resources/frames/';
 
             // reference frames
             $total = count($frames);
