@@ -141,6 +141,10 @@ class GifManipulator extends DataLogger
                         $liquidh = round($im->getImageWidth()*0.75);
                         $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
                     }
+                    /**
+                     * Im unable to host it on non Windows systems until this is fixed https://github.com/dlemstra/Magick.NET/issues/402
+                     * delegate library support not built-in '/var/www/html/contentawarebot/deployment/src/resources/frames/original/frame0.jpg' (LQR) @ error/resize.c/LiquidRescaleImage/2032
+                     * */
                     // here we liquid rescale them
                     $im->liquidRescaleImage($liquidw, $liquidh, $delta, $rigidity);
                     header('Content-Type: image/jpg');
