@@ -6,7 +6,7 @@
  * Time: 11:47 PM
  */
 
-namespace ContentAwareBot;
+namespace ContentAwareBot\Classes;
 
 use Stringy\Stringy as S;
 

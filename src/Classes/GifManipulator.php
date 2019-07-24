@@ -4,7 +4,7 @@
  * Date: 2/25/2019
  * Time: 11:00 PM */
 
-namespace ContentAwareBot;
+namespace ContentAwareBot\Classes;
 
 use GifCreator\GifCreator;
 use GifFrameExtractor\GifFrameExtractor;
@@ -61,7 +61,7 @@ class GifManipulator extends DataLogger
         $this->deleteFrames(__DIR__.'/../resources/frames/modified/');
         $this->deleteFrames(__DIR__.'/../resources/frames/original/');
 
-        $dt = new \ContentAwareBot\DataLogger();
+        $dt = new DataLogger();
 
         // since it kept getting PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted
         ini_set('memory_limit', '-1');
@@ -70,7 +70,7 @@ class GifManipulator extends DataLogger
         if ($gfe->isAnimatedGif($gifPath)) { // check this is an animated GIF
 
             // Extractions of the GIF frames and their durations
-            $frames = $gfe->extract($gifPath);
+            $frames = $gfe->extract($gifPath, false);
 
 
             $retouchedFrames = array();
@@ -104,38 +104,59 @@ class GifManipulator extends DataLogger
                     // changed nothing
                     $original_path = $base_folder."/original/frame{$key}.jpg";
                     $modified_path = $base_folder."/modified/frame{$key}.jpg";
+                    $aux = $base_folder."/modified/frame_edited{$key}.jpg";
 //                    header('Content-type: image/jpg');
                     imagejpeg($image, $original_path, 100); // We choose to show a JPEG with a quality of 100%
 
-                    // here we liquid rescale them
                     /** @var \Imagick $im */
                     $im = new \Imagick($original_path);
 
-                    // fuckup progressively
+                    // zoom to face
                     if ($key > $this->KEYFRAME_TWOTHIRDS) {
                         $onlyzoom = 'zoom';
-                        $this->ZoomToFaceOnce($im,   $key);
+                        $this->ZoomToFaceOnce($im, $key);
                     }
 //                        $im->addNoiseImage($noiseType);
                     if (!empty($onlyzoom)) {
                         $this->logdata("frame {$key} modifying : ".$onlyzoom);
                     }
 
-                    // Hitting 0 changes the result drastically, lines get very shagged
+                    // Hitting rigidity 0 changes the result drastically, lines get very shagged
                     $min = 1;
-                    $liquidw = round($im->getImageWidth()*0.5);
-                    $liquidh = round($im->getImageHeight()*0.5);
+                    /* no scaling => no deformation */
                     $delta = mt_rand($min , 25);
                     $rigidity = mt_rand($min , 25);
-                    $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
-
+                    $condition = $key >= $this->KEYFRAME_PENULTIMATE - 1;
+                    if ($condition) {
+//                        $rigidity = 0;
+//                        $liquidw = round($im->getImageWidth()*0.5);
+//                        $liquidh = round($im->getImageWidth()*0.5);
+                        $this->distort($im, 'shepards');
+                    } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
+                        $liquidw = round($im->getImageWidth()*0.5);
+                        $liquidh = round($im->getImageWidth()*0.5);
+                        $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
+                    } else {
+                        $liquidw = round($im->getImageWidth()*0.75);
+                        $liquidh = round($im->getImageWidth()*0.75);
+                        $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
+                    }
+                    // here we liquid rescale them
                     $im->liquidRescaleImage($liquidw, $liquidh, $delta, $rigidity);
                     header('Content-Type: image/jpg');
                     file_put_contents($modified_path, $im);
 
                     // load edited frame
                     $frameLayer = ImageWorkshop::initFromPath($modified_path);
-                    $frameLayer->resizeInPixel($frameLayer->getWidth()*2, $frameLayer->getHeight()*2, true);
+                    /* no scaling => no deformation */
+                    if ($condition) {
+                        $frameLayer->resizeInPixel(round($frameLayer->getWidth()*2), round($frameLayer->getHeight()*2), true);
+                    } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
+                        $frameLayer->resizeInPixel($frameLayer->getWidth()*2, $frameLayer->getHeight()*2, true);
+                    } else {
+                        $frameLayer->resizeInPixel(round($frameLayer->getWidth()*1.33), round($frameLayer->getHeight()*1.33), true);
+                    }
+
 
 
                     $retouchedFrames[] = $frameLayer->getResult();
@@ -195,9 +216,7 @@ class GifManipulator extends DataLogger
             if (count($coodinates)) {
                 $this->logdata("frame {$frame} zoomed to face and rescaled");
 
-                // TODO: pick face based on confidence
-                $rnd_key = array_rand($coodinates);
-                $facecoord = $coodinates[$rnd_key];
+                $facecoord = $this->pickBestFace($coodinates);
 
                 $width = $facecoord[2];
                 $height = $facecoord[3];
@@ -457,7 +476,11 @@ class GifManipulator extends DataLogger
                             $faces = $json['output']['faces'];
                             $faces_coordinates = [];
                             foreach ($faces as $face) {
-                                array_push( $faces_coordinates, $face['bounding_box']);
+                                $data = array(
+                                    'confidence' => $face['confidence'],
+                                    'bounding_box' => $face['bounding_box']
+                                );
+                                array_push( $faces_coordinates, $data);
                             }
                             return $faces_coordinates;
                         } else {
@@ -510,6 +533,75 @@ class GifManipulator extends DataLogger
             CURLOPT_POSTFIELDS => $data
         ]);
         return $ch;
+    }
+
+    public function pickBestFace($faces){
+        $best = 0;
+        $most_confident = 0;
+
+        foreach ($faces as $key => $face) {
+            if ($face['confidence'] > $most_confident) {
+                $best = $key;
+                $most_confident = $face['confidence'];
+            }
+        }
+
+        return $faces[$best]['bounding_box'];
+    }
+
+    public function distort($im, $type) {
+
+        $w1 = $im->getImageHeight();
+        $h1 = $im->getImageWidth();
+        switch($type) {
+            case 'barrelinverse':
+                $points = array(
+                    //0.2, 0.0, 0.0, 1.0
+                    0.2, 0.1, 0.0, 1.0
+                );
+                $im->setimagebackgroundcolor("#fad888");
+                $im->setImageVirtualPixelMethod(\Imagick::VIRTUALPIXELMETHOD_EDGE);
+                $im->distortImage(\Imagick::DISTORTION_BARRELINVERSE, $points, true);
+                break;
+            case 'depolar':
+                $points = array(0);
+                $im->setimagebackgroundcolor("#fad888");
+                $im->setImageVirtualPixelMethod(\Imagick::VIRTUALPIXELMETHOD_BACKGROUND);
+                $im->distortImage(\Imagick::DISTORTION_DEPOLAR, $points, true);
+                $im->scaleImage($h1, $w1);
+                break;
+            case 'polar':
+                $points = array(0);
+                $im->setimagebackgroundcolor("#fad888");
+                $im->setImageVirtualPixelMethod(\Imagick::VIRTUALPIXELMETHOD_HORIZONTALTILE);
+                $im->distortImage(\Imagick::DISTORTION_POLAR, $points, true);
+                break;
+            case 'shepards':
+                $points = array(
+
+                    //Setup some control points that don't move
+                    5 * $im->getImageWidth() / 100, 5 * $im->getImageHeight() / 100,
+                    5 * $im->getImageWidth() / 100, 5 * $im->getImageHeight() / 100,
+                    5 * $im->getImageWidth() / 100, 95 * $im->getImageHeight() / 100,
+                    5 * $im->getImageWidth() / 100, 95 * $im->getImageHeight() / 100,
+                    95 * $im->getImageWidth() / 100, 95 * $im->getImageHeight() / 100,
+                    95 * $im->getImageWidth() / 100, 95 * $im->getImageHeight() / 100,
+                    5 * $im->getImageWidth() / 100, 5 * $im->getImageHeight() / 100,
+                    95 * $im->getImageWidth() / 100, 95 * $im->getImageHeight() / 100,
+//            //Move the centre of the image down and to the right
+                    50 * $im->getImageWidth() / 100, 50 * $im->getImageHeight() / 100,
+                    60 * $im->getImageWidth() / 100, 60 * $im->getImageHeight() / 100,//
+//            //Move a point near the top-right of the image down and to the left and down
+                    90 * $im->getImageWidth(), 10 * $im->getImageHeight(),
+                    80 * $im->getImageWidth(), 15 * $im->getImageHeight(),
+                );
+                $im->setimagebackgroundcolor("#fad888");
+                $im->setImageVirtualPixelMethod(\Imagick::VIRTUALPIXELMETHOD_EDGE);
+//                $im->distortImage(\Imagick::DISTORTION_SHEPARDS, $points, true);
+                $im->distortImage(\Imagick::DISTORTION_SHEPARDS, $points, true);
+                break;
+        }
+
     }
 
 }

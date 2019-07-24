@@ -9,10 +9,14 @@
 require __DIR__ . '/../vendor/autoload.php';
 require_once 'resources/secrets.php';
 
-$dt = new ContentAwareBot\DataLogger();
+use ContentAwareBot\Classes\DataLogger;
+use ContentAwareBot\Classes\GifManipulator;
+use ContentAwareBot\Classes\FacebookHelper;
+
+$dt = new DataLogger();
 $dt->logdata('[DAILY]');
 
-$GM = new ContentAwareBot\GifManipulator();
+$GM = new GifManipulator();
 
 $new_path = __DIR__."/resources/gifs/modified.gif";
 $path = __DIR__."/resources/gifs/original.gif";
@@ -26,7 +30,7 @@ $gif_id = $GM->giphyUpload($new_path);
 
 if (!empty($gif_id)) {
 
-    $FB = new ContentAwareBot\FacebookHelper();
+    $FB = new FacebookHelper();
     $fb = $FB->init($_APP_ID, $_APP_SECRET, $_ACCESS_TOKEN_DEBUG);
 
     if (isset($res['user']) && isset($res['url'])){
@@ -38,7 +42,7 @@ if (!empty($gif_id)) {
     }
 
     $first_frame = __DIR__.'/resources/frames/modified/frame0.jpg';
-    $title = 'This is a test to circumvent Zuckerberg';
+    $title = 'Just trying stuff';
     $generated_gif = 'https://media.giphy.com/media/'.$gif_id.'/giphy.gif';
     $FB->newPost($fb, $first_frame, $title, $generated_gif, $res['url']);
 } else {
