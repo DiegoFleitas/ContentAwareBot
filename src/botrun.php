@@ -42,7 +42,7 @@ if (!empty($gif_id)) {
     }
 
     $first_frame = __DIR__.'/resources/frames/modified/frame0.jpg';
-    $title = 'Just trying stuff';
+    $title = '';
     $generated_gif = 'https://media.giphy.com/media/'.$gif_id.'/giphy.gif';
     $FB->newPost($fb, $first_frame, $title, $generated_gif, $res['url']);
 } else {

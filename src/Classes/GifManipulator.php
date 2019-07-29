@@ -69,13 +69,12 @@ class GifManipulator extends DataLogger
         $gfe = new GifFrameExtractor();
         if ($gfe->isAnimatedGif($gifPath)) { // check this is an animated GIF
 
-            // Extractions of the GIF frames and their durations
-            $frames = $gfe->extract($gifPath, false);
+            $base_folder = __DIR__.'/../resources/frames/';
 
+            // Extractions of the GIF frames and their durations
+            $frames = $gfe->extract($gifPath, true);
 
             $retouchedFrames = array();
-
-            $base_folder = __DIR__.'/../resources/frames/';
 
             // reference frames
             $total = count($frames);
@@ -95,21 +94,22 @@ class GifManipulator extends DataLogger
                 $this->logdata('processing '.count($frames).' frames...');
                 foreach ($frames as $key => $frame) {
 
+                    $original_path = $base_folder."original/frame{$key}.jpg";
+                    $modified_path = $base_folder."modified/frame{$key}.jpg";
+
                     // Initialization of the frame as a layer
                     /** @var PHPImageWorkshop\Core\ImageWorkshopLayer $frameLayer */
                     $frameLayer = ImageWorkshop::initFromResourceVar($frame['image']);
-
                     // save frame
                     $image = $frameLayer->getResult();
-                    // changed nothing
-                    $original_path = $base_folder."/original/frame{$key}.jpg";
-                    $modified_path = $base_folder."/modified/frame{$key}.jpg";
-                    $aux = $base_folder."/modified/frame_edited{$key}.jpg";
 //                    header('Content-type: image/jpg');
                     imagejpeg($image, $original_path, 100); // We choose to show a JPEG with a quality of 100%
 
+                    $auxpath = $base_folder."original/frame_edited{$key}.jpg";
+                    imagepng($image, $auxpath, 0);
                     /** @var \Imagick $im */
-                    $im = new \Imagick($original_path);
+                    $im = $this->replaceTransparent($base_folder, $auxpath, $key);
+//                    $im = new \Imagick($original_path);
 
                     // zoom to face
                     if ($key > $this->KEYFRAME_TWOTHIRDS) {
@@ -128,9 +128,8 @@ class GifManipulator extends DataLogger
                     $rigidity = mt_rand($min , 25);
                     $condition = $key >= $this->KEYFRAME_PENULTIMATE - 1;
                     if ($condition) {
-//                        $rigidity = 0;
-//                        $liquidw = round($im->getImageWidth()*0.5);
-//                        $liquidh = round($im->getImageWidth()*0.5);
+                        $liquidw = round($im->getImageWidth()*0.5);
+                        $liquidh = round($im->getImageWidth()*0.5);
                         $this->distort($im, 'shepards');
                     } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
                         $liquidw = round($im->getImageWidth()*0.5);
@@ -141,10 +140,7 @@ class GifManipulator extends DataLogger
                         $liquidh = round($im->getImageWidth()*0.75);
                         $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
                     }
-                    /**
-                     * Im unable to host it on non Windows systems until this is fixed https://github.com/dlemstra/Magick.NET/issues/402
-                     * delegate library support not built-in '/var/www/html/contentawarebot/deployment/src/resources/frames/original/frame0.jpg' (LQR) @ error/resize.c/LiquidRescaleImage/2032
-                     * */
+
                     // here we liquid rescale them
                     $im->liquidRescaleImage($liquidw, $liquidh, $delta, $rigidity);
                     header('Content-Type: image/jpg');
@@ -153,15 +149,11 @@ class GifManipulator extends DataLogger
                     // load edited frame
                     $frameLayer = ImageWorkshop::initFromPath($modified_path);
                     /* no scaling => no deformation */
-                    if ($condition) {
-                        $frameLayer->resizeInPixel(round($frameLayer->getWidth()*2), round($frameLayer->getHeight()*2), true);
-                    } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
+                    if ($condition || $key > $this->KEYFRAME_ANTEPENULTIMATE) {
                         $frameLayer->resizeInPixel($frameLayer->getWidth()*2, $frameLayer->getHeight()*2, true);
                     } else {
                         $frameLayer->resizeInPixel(round($frameLayer->getWidth()*1.33), round($frameLayer->getHeight()*1.33), true);
                     }
-
-
 
                     $retouchedFrames[] = $frameLayer->getResult();
                 }
@@ -214,7 +206,8 @@ class GifManipulator extends DataLogger
         $h1 = $im->getImageWidth();
 
         if ($this->GETCOORDS) {
-            $path = $im->getImageFilename();
+//            $path = $im->getImageFilename();
+            $path = __DIR__.'/../resources/frames/original/frame_edited'.$frame.'.jpg';
             $coodinates = $this->deepAiFacialRecognition($path);
 
             if (count($coodinates)) {
@@ -554,7 +547,7 @@ class GifManipulator extends DataLogger
     }
 
     public function distort($im, $type) {
-
+        /** @var \Imagick $im */
         $w1 = $im->getImageHeight();
         $h1 = $im->getImageWidth();
         switch($type) {
@@ -604,6 +597,44 @@ class GifManipulator extends DataLogger
 //                $im->distortImage(\Imagick::DISTORTION_SHEPARDS, $points, true);
                 $im->distortImage(\Imagick::DISTORTION_SHEPARDS, $points, true);
                 break;
+        }
+
+    }
+
+    public function replaceTransparent($path, $auxpath, $key) {
+        try {
+
+            /** @var \Imagick $check */
+            $check = new \Imagick($auxpath);
+
+            // Combine frame over previous to circumvent transparency issues
+            if ($key > 0) {
+
+                $base_path = $path."original/frame_edited".($key-1).".jpg";
+                /** @var \Imagick $base_image */
+                $base_image = new \Imagick($base_path);
+
+                // Fully transparent images fuck me up, replace them with previous image, assuming its not the first frame
+                $output = $check->identifyFormat("Trim box: %@ number of unique colors: %k");
+                // If not completely transparent, use the previous frame as base
+                // (If frame to fix is completly transparent, just replace it with previous)
+                if ($output !== 'Trim box: 0x0+'.$check->getImageWidth().'+'.$check->getImageHeight().' number of unique colors: 1') {
+                    /** @var \Imagick $current_image */
+                    $current_image = new \Imagick($path."original/frame_edited".($key).".jpg");
+
+                    $base_image->compositeImage($current_image, \Imagick::COMPOSITE_ATOP, 0, 0);
+                    $base_image->setImageFormat('jpg');
+                }
+            } else {
+                $base_image = $check;
+            }
+
+            header('Content-Type: image/jpg');
+            file_put_contents($auxpath, $base_image);
+
+            return $base_image;
+        } catch (Exception $e) {
+            echo $e->getMessage();
         }
 
     }
