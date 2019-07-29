@@ -38,6 +38,9 @@ class GifManipulator extends DataLogger
         $this->API_KEY = $API_KEY;
     }
 
+    /**
+     * @param array $frames
+     */
     public function setRelevantFrames($frames) {
         $this->KEYFRAME_ONETHIRD = $frames[0];
         $this->KEYFRAME_TWOTHIRDS = $frames[1];
@@ -45,10 +48,10 @@ class GifManipulator extends DataLogger
         $this->KEYFRAME_PENULTIMATE = $frames[3];
     }
 
+
     /**
      * @param string $gifPath
      * @param string $newGifPath
-     * @param bool $noise
      * @throws \Exception
      */
     public function liquidRescale($gifPath, $newGifPath){
@@ -130,7 +133,7 @@ class GifManipulator extends DataLogger
                     if ($condition) {
                         $liquidw = round($im->getImageWidth()*0.5);
                         $liquidh = round($im->getImageWidth()*0.5);
-                        $this->distort($im, 'shepards');
+//                        $this->distort($im, 'shepards');
                     } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
                         $liquidw = round($im->getImageWidth()*0.5);
                         $liquidh = round($im->getImageWidth()*0.5);
@@ -179,6 +182,7 @@ class GifManipulator extends DataLogger
 
     /**
      * @param \Imagick $im
+     * @param int|string $key
      * @throws \ImagickException
      */
     public function Zoom($im, $key){
@@ -190,15 +194,16 @@ class GifManipulator extends DataLogger
          $x = $this->X;
          $y = $this->Y;
 
-        // FIXME: sometimes crops an uninteresting area, cropping should be more centered
         $this->logdata("frame {$key} cropping {$x},{$y},{$width},{$height}");
 
         $im->cropImage($width, $height, $x, $y);
+        // FIXME: sometimes the cropped area is too pixelated when scaled
         $im->scaleImage($h1, $w1);
     }
 
     /**
      * @param \Imagick $im
+     * @param int|string $frame
      * @throws \ImagickException
      */
     public function ZoomToFaceOnce($im, $frame){
@@ -233,7 +238,6 @@ class GifManipulator extends DataLogger
 
                 $width = $cropw;
                 $height = $croph;
-                // FIXME: sometimes crops an uninteresting area, cropping should be more centered
                 $x = 0;
                 $y = 0;
 
@@ -250,6 +254,12 @@ class GifManipulator extends DataLogger
         }
     }
 
+    /**
+     * @param string $width
+     * @param string $height
+     * @param string $x
+     * @param string $y
+     */
     public function setCoords($width, $height, $x, $y) {
         $this->W = $width;
         $this->H = $height;
@@ -257,6 +267,10 @@ class GifManipulator extends DataLogger
         $this->Y = $y;
     }
 
+    /**
+     * @param string $dir
+     * @param null $total
+     */
     public function deleteFrames($dir = '', $total = null){
 
         if($total == null){
@@ -347,9 +361,8 @@ class GifManipulator extends DataLogger
 
     /**
      * @param string $path
-     * @param string $type
      *
-     * @return array
+     * @return string
      *
      * @throws \GPH\ApiException
      */
@@ -412,6 +425,10 @@ class GifManipulator extends DataLogger
 
     }
 
+    /**
+     * @param string $source
+     * @return string
+     */
     public function deepAiFacialRecognition($source)
     {
         $curl = curl_init();
@@ -532,6 +549,10 @@ class GifManipulator extends DataLogger
         return $ch;
     }
 
+    /**
+     * @param array $faces
+     * @return mixed
+     */
     public function pickBestFace($faces){
         $best = 0;
         $most_confident = 0;
@@ -546,6 +567,11 @@ class GifManipulator extends DataLogger
         return $faces[$best]['bounding_box'];
     }
 
+    /**
+     * @param \Imagick $im
+     * @param string $type
+     * @throws \ImagickException
+     */
     public function distort($im, $type) {
         /** @var \Imagick $im */
         $w1 = $im->getImageHeight();
@@ -601,6 +627,13 @@ class GifManipulator extends DataLogger
 
     }
 
+    /**
+     * @param string $path
+     * @param string $auxpath
+     * @param int|string $key
+     * @return \Imagick
+     * @throws \ImagickException
+     */
     public function replaceTransparent($path, $auxpath, $key) {
         try {
 
