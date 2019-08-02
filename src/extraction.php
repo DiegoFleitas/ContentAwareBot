@@ -18,8 +18,8 @@ $dt->logdata('[DAILY]');
 
 $GM = new GifManipulator();
 
-$new_path = __DIR__.'\resources\gifs\modified.gif';
-$path = __DIR__.'\resources\gifs\original.gif';
+$new_path = __DIR__.'/resources/gifs/modified.gif';
+$path = __DIR__.'/resources/gifs/original.gif';
 //$path = __DIR__.'\resources\gifs\test.gif';
 
 $delays = [];

@@ -219,7 +219,7 @@ class GifManipulator extends DataLogger
                 $data = $result->getData();
                 $user = '';
                 $url = "https://media.giphy.com/media/{$data->getId()}/giphy.gif";
-                $this->logdata('giphyGet '.$url.'...');
+                $this->logdata('giphyGet '.$url.' saving at '.$path);
                 header('Content-type: image/gif');
                 file_put_contents($path, file_get_contents($url));
             }
@@ -555,7 +555,7 @@ class GifManipulator extends DataLogger
      * @param $_FFPROBE_PATH
      */
     public function initFfmpeg($_FFMPEG_PATH, $_FFPROBE_PATH) {
-        $ffmpeg = FFMpeg\FFMpeg::create(array(
+        $ffmpeg = \FFMpeg\FFMpeg::create(array(
             'ffmpeg.binaries'  => $_FFMPEG_PATH,
             'ffprobe.binaries' => $_FFPROBE_PATH,
             'timeout'          => 3600, // The timeout for the underlying process
@@ -569,7 +569,7 @@ class GifManipulator extends DataLogger
      * @param $_FFPROBE_PATH
      */
     public function initFfprobe($_FFMPEG_PATH, $_FFPROBE_PATH) {
-        $ffprobe = FFMpeg\FFProbe::create(array(
+        $ffprobe = \FFMpeg\FFProbe::create(array(
             'ffmpeg.binaries'  => $_FFMPEG_PATH,
             'ffprobe.binaries' => $_FFPROBE_PATH,
             'timeout'          => 3600, // The timeout for the underlying process
@@ -615,8 +615,7 @@ class GifManipulator extends DataLogger
             }
 
         } catch (\Exception $e) {
-            echo $e->getMessage();
-            $message = $e->getMessage();
+            $message = $e->getMessage().' '.$e->getTraceAsString();
             $this->logdata($message, 1);
         }
     }
@@ -649,6 +648,8 @@ class GifManipulator extends DataLogger
         foreach ($src as $frame) {
             array_push($delays, $src->getImageDelay());
         }
+        $message = 'delays: '.implode(', ', $delays);
+        $this->logdata($message, 0);
 
         $this->extractFrames2($gifPath, $delays);
 
@@ -716,7 +717,7 @@ class GifManipulator extends DataLogger
                 file_put_contents($modified_path, $im);
 
             } catch (\Exception $e) {
-                $message = ''. $e->getMessage();
+                $message = ''. $e->getMessage().' '.$e->getTraceAsString();
                 $this->logdata($message, 1);
             }
         }
