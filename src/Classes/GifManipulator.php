@@ -6,12 +6,14 @@
 
 namespace ContentAwareBot\Classes;
 
-use GifCreator\GifCreator;
-use GifFrameExtractor\GifFrameExtractor;
-use PHPImageWorkshop\ImageWorkshop as ImageWorkshop;
+use FFMpeg;
 
 class GifManipulator extends DataLogger
 {
+    /** @var $ffmpeg FFMpeg\FFMpeg   */
+    protected $ffmpeg = null;
+    /** @var $ffprobe FFMpeg\FFProbe  */
+    protected $ffprobe = null;
 
     const NOISE_GAUSSIAN = 2;
     const NOISE_MULTIPLICATIVEGAUSSIAN = 3;
@@ -39,146 +41,21 @@ class GifManipulator extends DataLogger
     }
 
     /**
-     * @param array $frames
+     * @param int $total
      */
-    public function setRelevantFrames($frames) {
-        $this->KEYFRAME_ONETHIRD = $frames[0];
-        $this->KEYFRAME_TWOTHIRDS = $frames[1];
-        $this->KEYFRAME_ANTEPENULTIMATE = $frames[2];
-        $this->KEYFRAME_PENULTIMATE = $frames[3];
+    public function setRelevantFrames($total) {
+        $onethird_total = $total / 3;
+        $twothirds_total = $onethird_total * 2;
+        /** one third of the way from $twothirds_total to $total */
+        $antepenult = round((2/3) * $twothirds_total + (1/3) * $total);
+        /** two thirds of the way from $twothirds_total to $total */
+        $penult =  round($twothirds_total + ($antepenult - $twothirds_total) * 2);
+
+        $this->KEYFRAME_ONETHIRD = $onethird_total;
+        $this->KEYFRAME_TWOTHIRDS = $twothirds_total;
+        $this->KEYFRAME_ANTEPENULTIMATE = $antepenult;
+        $this->KEYFRAME_PENULTIMATE = $penult;
     }
-
-
-    /**
-     * @param string $gifPath
-     * @param string $newGifPath
-     * @throws \Exception
-     */
-    public function liquidRescale($gifPath, $newGifPath){
-
-        /** FIXME short gifs look too abrupt when transformed */
-        /** FIXME The minimum height for a Facebook video is 120 pixels */
-
-        $this->logdata('liquidRescale.. ');
-
-        $this->deleteFrames(__DIR__.'/../resources/frames/modified/');
-        $this->deleteFrames(__DIR__.'/../resources/frames/original/');
-
-        $dt = new DataLogger();
-
-        // since it kept getting PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted
-        ini_set('memory_limit', '-1');
-
-        $gfe = new GifFrameExtractor();
-        if ($gfe->isAnimatedGif($gifPath)) { // check this is an animated GIF
-
-            $base_folder = __DIR__.'/../resources/frames/';
-
-            // Extractions of the GIF frames and their durations
-            $frames = $gfe->extract($gifPath, true);
-
-            $retouchedFrames = array();
-
-            // reference frames
-            $total = count($frames);
-            $onethird_total = $total / 3;
-            $twothirds_total = $onethird_total * 2;
-            /** one third of the way from $twothirds_total to $total */
-            $antepenult = round((2/3) * $twothirds_total + (1/3) * $total);
-            /** two thirds of the way from $twothirds_total to $total */
-            $penult =  round($twothirds_total + ($antepenult - $twothirds_total) * 2);
-            $relevant_frames = array (
-                $onethird_total, $twothirds_total, $antepenult, $penult
-            );
-            $this->setRelevantFrames($relevant_frames);
-
-            try {
-
-                $this->logdata('processing '.count($frames).' frames...');
-                foreach ($frames as $key => $frame) {
-
-                    $original_path = $base_folder."original/frame{$key}.jpg";
-                    $modified_path = $base_folder."modified/frame{$key}.jpg";
-
-                    // Initialization of the frame as a layer
-                    /** @var PHPImageWorkshop\Core\ImageWorkshopLayer $frameLayer */
-                    $frameLayer = ImageWorkshop::initFromResourceVar($frame['image']);
-                    // save frame
-                    $image = $frameLayer->getResult();
-//                    header('Content-type: image/jpg');
-                    imagejpeg($image, $original_path, 100); // We choose to show a JPEG with a quality of 100%
-
-                    $auxpath = $base_folder."original/frame_edited{$key}.jpg";
-                    imagepng($image, $auxpath, 0);
-                    /** @var \Imagick $im */
-                    $im = $this->replaceTransparent($base_folder, $auxpath, $key);
-//                    $im = new \Imagick($original_path);
-
-                    // zoom to face
-                    if ($key > $this->KEYFRAME_TWOTHIRDS) {
-                        $onlyzoom = 'zoom';
-                        $this->ZoomToFaceOnce($im, $key);
-                    }
-//                        $im->addNoiseImage($noiseType);
-                    if (!empty($onlyzoom)) {
-                        $this->logdata("frame {$key} modifying : ".$onlyzoom);
-                    }
-
-                    // Hitting rigidity 0 changes the result drastically, lines get very shagged
-                    $min = 1;
-                    /* no scaling => no deformation */
-                    $delta = mt_rand($min , 25);
-                    $rigidity = mt_rand($min , 25);
-                    $condition = $key >= $this->KEYFRAME_PENULTIMATE - 1;
-                    if ($condition) {
-                        $liquidw = round($im->getImageWidth()*0.5);
-                        $liquidh = round($im->getImageWidth()*0.5);
-//                        $this->distort($im, 'shepards');
-                    } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
-                        $liquidw = round($im->getImageWidth()*0.5);
-                        $liquidh = round($im->getImageWidth()*0.5);
-                        $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
-                    } else {
-                        $liquidw = round($im->getImageWidth()*0.75);
-                        $liquidh = round($im->getImageWidth()*0.75);
-                        $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
-                    }
-
-                    // here we liquid rescale them
-                    $im->liquidRescaleImage($liquidw, $liquidh, $delta, $rigidity);
-                    header('Content-Type: image/jpg');
-                    file_put_contents($modified_path, $im);
-
-                    // load edited frame
-                    $frameLayer = ImageWorkshop::initFromPath($modified_path);
-                    /* no scaling => no deformation */
-                    if ($condition || $key > $this->KEYFRAME_ANTEPENULTIMATE) {
-                        $frameLayer->resizeInPixel($frameLayer->getWidth()*2, $frameLayer->getHeight()*2, true);
-                    } else {
-                        $frameLayer->resizeInPixel(round($frameLayer->getWidth()*1.33), round($frameLayer->getHeight()*1.33), true);
-                    }
-
-                    $retouchedFrames[] = $frameLayer->getResult();
-                }
-
-                // Then we re-generate the GIF
-                $gc = new GifCreator();
-
-                $gc->create($retouchedFrames, $gfe->getFrameDurations(), 0);
-
-                // And now save it !
-                header('Content-type: image/gif');
-                file_put_contents($newGifPath, $gc->getGif());
-
-            } catch (\Exception $e) {
-                echo $e->getMessage();
-            }
-
-        }
-
-        $dt->logdata('Done');
-    }
-
 
     /**
      * @param \Imagick $im
@@ -211,8 +88,9 @@ class GifManipulator extends DataLogger
         $h1 = $im->getImageWidth();
 
         if ($this->GETCOORDS) {
-//            $path = $im->getImageFilename();
-            $path = __DIR__.'/../resources/frames/original/frame_edited'.$frame.'.jpg';
+            $path = $im->getImageFilename();
+
+//            $coodinates = [];
             $coodinates = $this->deepAiFacialRecognition($path);
 
             if (count($coodinates)) {
@@ -245,7 +123,7 @@ class GifManipulator extends DataLogger
             }
 
             $im->cropImage($width, $height, $x, $y);
-            $im->scaleImage($h1, $w1);
+//            $im->scaleImage($h1, $w1);
 
             $this->setCoords($width, $height, $x, $y);
 
@@ -670,6 +548,208 @@ class GifManipulator extends DataLogger
             echo $e->getMessage();
         }
 
+    }
+
+    /**
+     * @param $_FFMPEG_PATH
+     * @param $_FFPROBE_PATH
+     */
+    public function initFfmpeg($_FFMPEG_PATH, $_FFPROBE_PATH) {
+        $ffmpeg = FFMpeg\FFMpeg::create(array(
+            'ffmpeg.binaries'  => $_FFMPEG_PATH,
+            'ffprobe.binaries' => $_FFPROBE_PATH,
+            'timeout'          => 3600, // The timeout for the underlying process
+            'ffmpeg.threads'   => 12,   // The number of threads that FFMpeg should use
+        ));
+        $this->ffmpeg = $ffmpeg;
+    }
+
+    /**
+     * @param $_FFMPEG_PATH
+     * @param $_FFPROBE_PATH
+     */
+    public function initFfprobe($_FFMPEG_PATH, $_FFPROBE_PATH) {
+        $ffprobe = FFMpeg\FFProbe::create(array(
+            'ffmpeg.binaries'  => $_FFMPEG_PATH,
+            'ffprobe.binaries' => $_FFPROBE_PATH,
+            'timeout'          => 3600, // The timeout for the underlying process
+            'ffmpeg.threads'   => 12,   // The number of threads that FFMpeg should use
+        ));
+        $this->ffprobe = $ffprobe;
+    }
+
+    /**
+     * @param string $gif_path
+     * @param array $delays
+     */
+    public function extractFrames2($gif_path, $delays)
+    {
+        try {
+            $ffmpeg = $this->ffmpeg;
+
+            $base_folder = __DIR__ . '/../resources/frames/';
+
+            /** @var FFMpeg\Media\Video $gif */
+            $gif = $ffmpeg->open($gif_path);
+
+            $counter = 0;
+
+            // Sum of all delays is GIF leght
+            $limit = array_sum($delays);
+
+            // duration in milliseconds
+            $this->logdata('duration: '.$limit);
+
+            for ($s = 0, $i = 0; $s < $limit; $s += $delays[$i], $i++) {
+                // Delay is expressed in ticks (hundredths of second)
+                $timecode = FFMpeg\Coordinate\TimeCode::fromSeconds($s/100);
+                $save_as = $base_folder."original/frame{$counter}.jpg";
+                $frame = $gif->frame($timecode);
+                $frame->save($save_as);
+                if (is_file($save_as)) {
+                    $this->logdata(' (s '.$s.')  file: '.$save_as);
+                } else {
+                    $this->logdata('[FALLO] (s '.$s.')  file: '.$save_as);
+                }
+                $counter++;
+            }
+
+        } catch (\Exception $e) {
+            echo $e->getMessage();
+            $message = $e->getMessage();
+            $this->logdata($message, 1);
+        }
+    }
+
+    /**
+     * @param string $gifPath
+     * @param string $newGifPath
+     * @throws \Exception
+     */
+    public function liquidRescale2($gifPath, $newGifPath){
+
+        /** FIXME short gifs look too abrupt when transformed */
+        /** FIXME The minimum height for a Facebook video is 120 pixels */
+
+        $this->logdata('liquidRescale.. ');
+
+        $original_frames = __DIR__.'/../resources/frames/original/';
+        $modified_frames = __DIR__.'/../resources/frames/modified/';
+        $this->deleteFrames($modified_frames);
+        $this->deleteFrames($original_frames);
+
+        $dt = new DataLogger();
+
+        // since it kept getting PHP Fatal error:  Allowed memory size of 134217728 bytes exhausted
+        ini_set('memory_limit', '-1');
+
+        $delays = [];
+        $src = new \Imagick($gifPath);
+        // Different frames might have different delay
+        foreach ($src as $frame) {
+            array_push($delays, $src->getImageDelay());
+        }
+
+        $this->extractFrames2($gifPath, $delays);
+
+        $framecount = count($delays);
+        $this->setRelevantFrames($framecount);
+
+        $new_frames = [];
+
+        $this->logdata('processing '.$framecount.' frames...');
+        for ($key = 0; $key < $framecount; $key++) {
+
+            $original_path = $original_frames."frame{$key}.jpg";
+            $modified_path = $modified_frames."frame{$key}.jpg";
+
+            array_push($new_frames, $modified_path);
+
+           /** Do stuff */
+            try {
+                /** @var \Imagick $im */
+                $im = new \Imagick($original_path);
+                $w1 = $im->getImageHeight();
+                $h1 = $im->getImageWidth();
+
+                // zoom to face
+                if ($key > $this->KEYFRAME_TWOTHIRDS) {
+                    $onlyzoom = 'zoom';
+                    $this->ZoomToFaceOnce($im, $key);
+                }
+//                        $im->addNoiseImage($noiseType);
+                if (!empty($onlyzoom)) {
+                    $this->logdata("frame {$key} modifying : ".$onlyzoom);
+                }
+
+                // Hitting rigidity 0 changes the result drastically, lines get very shagged
+                $min = 1;
+                /* no scaling => no deformation */
+                $delta = mt_rand($min , 25);
+                $rigidity = mt_rand($min , 25);
+                $condition = $key >= $this->KEYFRAME_PENULTIMATE - 1;
+                if ($condition) {
+                    $liquidw = round($im->getImageWidth()*0.5);
+                    $liquidh = round($im->getImageWidth()*0.5);
+//                        $this->distort($im, 'shepards');
+                } elseif ($key > $this->KEYFRAME_ANTEPENULTIMATE) {
+                    $liquidw = round($im->getImageWidth()*0.5);
+                    $liquidh = round($im->getImageWidth()*0.5);
+                    $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
+                } else {
+                    $liquidw = round($im->getImageWidth()*0.75);
+                    $liquidh = round($im->getImageWidth()*0.75);
+                    $this->logdata("frame {$key} liquid rescaling params liquidw: {$liquidw} liquidh: {$liquidh} delta: {$delta} rigidity: {$rigidity}");
+                }
+
+                // here we liquid rescale them
+                $im->liquidRescaleImage($liquidw, $liquidh, $delta, $rigidity);
+                $im->scaleImage($h1, $w1);
+//                if ($condition || $key > $this->KEYFRAME_ANTEPENULTIMATE) {
+//                    $im->scaleImage($im->getImageWidth()*2, $im->getImageWidth()*2);
+//                } else {
+//                    $im->scaleImage(round($im->getImageWidth()*1.33), round($im->getImageWidth()*1.33));
+//                }
+
+
+                header('Content-Type: image/jpg');
+                file_put_contents($modified_path, $im);
+
+            } catch (\Exception $e) {
+                $message = ''. $e->getMessage();
+                $this->logdata($message, 1);
+            }
+        }
+
+        $finalImage = $this->coalesceImages($new_frames, $delays);
+        header("Content-Type: image/gif");
+        $finalImage->writeImages($newGifPath, true);
+
+        $dt->logdata('Done');
+    }
+
+
+    /**
+     * @param string $imagePaths
+     * @param array $delays
+     * @return \Imagick
+     * @throws \ImagickException
+     */
+    function coalesceImages($imagePaths, $delays)
+    {
+        $canvas = new \Imagick();
+        foreach ($imagePaths as $key => $imagePath) {
+            $canvas->readImage($imagePath);
+            $canvas->setImageDelay($delays[$key]);
+        }
+        $canvas->setImageFormat('gif');
+
+        $finalImage = $canvas->coalesceImages();
+        $finalImage->setImageFormat('gif');
+        $finalImage->setImageIterations(0); //loop forever
+        $finalImage->mergeImageLayers(\Imagick::LAYERMETHOD_COALESCE);
+
+        return $finalImage;
     }
 
 }

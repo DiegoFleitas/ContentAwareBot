@@ -18,13 +18,15 @@ $dt->logdata('[DAILY]');
 
 $GM = new GifManipulator();
 
-$new_path = __DIR__."/resources/gifs/modified.gif";
-$path = __DIR__."/resources/gifs/original.gif";
+$new_path = __DIR__.'\resources\gifs\modified.gif';
+$path = __DIR__.'\resources\gifs\original.gif';
 
 $res = $GM->setAPIKEY($_GIPHY_API_KEY);
 $res = $GM->giphyGet($path);
 
-$GM->liquidRescale($path, $new_path);
+$GM->initFfmpeg($_FFMPEG_PATH, $_FFPROBE_PATH);
+$GM->initFfprobe($_FFMPEG_PATH, $_FFPROBE_PATH);
+$GM->liquidRescale2($path, $new_path);
 
 $gif_id = $GM->giphyUpload($new_path);
 
